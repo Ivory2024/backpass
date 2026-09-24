@@ -61,3 +61,12 @@ test("session prompt names the exit code when opencode exits with no stderr", as
     await session.close();
   }
 });
+
+test("formatAcpxErrorDetail preserves full stderr text on failure", async () => {
+  const { formatAcpxErrorDetail } = await import("../src/acpx.js");
+  assert.equal(
+    formatAcpxErrorDetail({ stderr: "[acpx] error: quota exhausted\n[acpx] details: retry later\n", code: 1 }),
+    "[acpx] error: quota exhausted\n[acpx] details: retry later",
+  );
+  assert.equal(formatAcpxErrorDetail({ stderr: "   ", code: 1 }), "exit 1");
+});

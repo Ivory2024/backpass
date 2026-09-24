@@ -39,6 +39,13 @@ if (argv.includes("config") && argv.includes("show")) {
 const creating = argv.includes("sessions") && argv.includes("new");
 const status = argv.includes("status");
 const closing = argv.includes("sessions") && argv.includes("close");
+if (creating && process.env.FAKE_ACPX_MODE === "check-flags") {
+  const hasDenyAll = argv.includes("--deny-all");
+  const hasNonInteractive = argv.includes("--non-interactive-permissions") && argv[argv.indexOf("--non-interactive-permissions") + 1] === "deny";
+  if (hasDenyAll && hasNonInteractive) process.exit(0);
+  process.stderr.write("missing non-interactive flags\\n");
+  process.exit(1);
+}
 if (creating && process.env.FAKE_ACPX_MODE === "no-sessions") {
   process.stderr.write("error: unknown command 'sessions'\\n");
   process.exit(2);
@@ -135,6 +142,21 @@ test("the availability probe scopes the cold-start budget to session creation", 
 
     assert.equal(result.verdict, "ok");
     assert.ok(Date.now() - startedAt < 1_500, "status and close exceeded the short operation budget");
+  } finally {
+    process.env.FAKE_ACPX_MODE = "hang";
+  }
+});
+
+test("probeSession passes deny-all and non-interactive permission flags", async () => {
+  process.env.FAKE_ACPX_MODE = "check-flags";
+  try {
+    const result = await probeSession({
+      agent: "codex",
+      sessionName: "backpass-check-flags",
+      cwd: fixtureDir,
+      timeoutMs: 1_000,
+    });
+    assert.equal(result.verdict, "ok");
   } finally {
     process.env.FAKE_ACPX_MODE = "hang";
   }
