@@ -21,13 +21,14 @@ fs.writeFileSync(
 const argv = process.argv.slice(2);
 if (argv.includes("sessions") && argv.includes("new")) process.exit(0);
 if (argv.includes("sessions") && argv.includes("close")) process.exit(0);
+if (process.env.FAKE_ACPX_STDERR) process.stderr.write(process.env.FAKE_ACPX_STDERR + "\\n");
 process.exit(1);
 `,
 );
 fs.chmodSync(fakeAcpx, 0o755);
 
 process.env.BACKPASS_ACPX_BIN = fakeAcpx;
-const { AcpxError, execOneShot, openSession } = await import("../src/acpx.js");
+const { AcpxError, execOneShot, openSession, formatAcpxErrorDetail } = await import("../src/acpx.js");
 
 test.after(() => {
   fs.rmSync(fixtureDir, { recursive: true, force: true });
@@ -62,11 +63,60 @@ test("session prompt names the exit code when opencode exits with no stderr", as
   }
 });
 
-test("formatAcpxErrorDetail preserves full stderr text on failure", async () => {
-  const { formatAcpxErrorDetail } = await import("../src/acpx.js");
+test("exec one-shot and session prompt preserve multiline stderr in AcpxError.message", async () => {
+  process.env.FAKE_ACPX_STDERR = "[acpx] error: quota exhausted\n[acpx] details: retry later";
+  try {
+    await assert.rejects(
+      () => execOneShot({ agent: "opencode", promptFile, cwd: fixtureDir, timeoutSeconds: 5 }),
+      (err) => {
+        assert.ok(err instanceof AcpxError, String(err));
+        assert.equal(
+          err.message,
+          "acpx opencode exec failed (exit 1): [acpx] error: quota exhausted\n[acpx] details: retry later",
+        );
+        return true;
+      },
+    );
+
+    const session = await openSession({
+      agent: "opencode",
+      sessionName: "backpass-multiline-stderr",
+      cwd: fixtureDir,
+    });
+    try {
+      await assert.rejects(
+        () => session.prompt({ promptFile, timeoutSeconds: 5 }),
+        (err) => {
+          assert.ok(err instanceof AcpxError, String(err));
+          assert.equal(
+            err.message,
+            "acpx opencode session prompt failed (exit 1): [acpx] error: quota exhausted\n[acpx] details: retry later",
+          );
+          return true;
+        },
+      );
+    } finally {
+      await session.close();
+    }
+  } finally {
+    delete process.env.FAKE_ACPX_STDERR;
+  }
+});
+
+test("formatAcpxErrorDetail preserves multiline stderr and bounds long text", async () => {
   assert.equal(
     formatAcpxErrorDetail({ stderr: "[acpx] error: quota exhausted\n[acpx] details: retry later\n", code: 1 }),
     "[acpx] error: quota exhausted\n[acpx] details: retry later",
   );
   assert.equal(formatAcpxErrorDetail({ stderr: "   ", code: 1 }), "exit 1");
+
+  const longLines = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n");
+  const boundedLines = formatAcpxErrorDetail({ stderr: longLines });
+  assert.ok(boundedLines.endsWith("\n..."));
+  assert.equal(boundedLines.split("\n").length, 21);
+
+  const longText = "a".repeat(2500);
+  const boundedChars = formatAcpxErrorDetail({ stderr: longText });
+  assert.ok(boundedChars.endsWith("..."));
+  assert.equal(boundedChars.length, 2003);
 });

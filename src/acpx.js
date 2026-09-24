@@ -395,11 +395,27 @@ export async function acpxVersion({ timeoutMs = 10_000 } = {}) {
   return line || null;
 }
 
+const MAX_STDERR_LINES = 20;
+const MAX_STDERR_CHARS = 2000;
+
 export function formatAcpxErrorDetail(result) {
-  const text = (result?.stderr || "").trim();
-  if (text) return text;
-  const stdoutText = (result?.stdout || "").trim();
-  if (stdoutText && !stdoutText.startsWith("{")) return stdoutText;
+  let text = (result?.stderr || "").trim();
+  if (!text) {
+    const stdoutText = (result?.stdout || "").trim();
+    if (stdoutText && !stdoutText.startsWith("{")) {
+      text = stdoutText;
+    }
+  }
+  if (text) {
+    const lines = text.split("\n");
+    if (lines.length > MAX_STDERR_LINES) {
+      text = `${lines.slice(0, MAX_STDERR_LINES).join("\n")}\n...`;
+    }
+    if (text.length > MAX_STDERR_CHARS) {
+      text = `${text.slice(0, MAX_STDERR_CHARS)}...`;
+    }
+    return text;
+  }
   return result?.code !== undefined && result?.code !== null ? `exit ${result.code}` : "unknown error";
 }
 
