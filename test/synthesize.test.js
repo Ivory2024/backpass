@@ -62,6 +62,11 @@ if (!prompt.includes("## Measured changes")) {
 } else {
   const step = script.annotations[Math.min(state.annotate, script.annotations.length - 1)];
   state.annotate += 1;
+  if (step.exitCode) {
+    fs.writeFileSync(statePath, JSON.stringify(state));
+    if (step.stderr) process.stderr.write(step.stderr + "\\n");
+    process.exit(step.exitCode);
+  }
   if (step.editFirst) applyEdits(step.editFirst);
   process.stdout.write(typeof step.reply === "string" ? step.reply : JSON.stringify(step.reply) + "\\n");
   process.stderr.write("[acpx] tokens: input=500 output=30 total=530\\n");
@@ -73,6 +78,7 @@ fs.chmodSync(fakeAcpx, 0o755);
 process.env.BACKPASS_ACPX_BIN = fakeAcpx;
 
 const { synthesizeProposal, ANNOTATE_TURNS } = await import("../src/synthesize.js");
+const { AcpxError } = await import("../src/acpx.js");
 const { applyDecisions } = await import("../src/apply/writer.js");
 const { loadConfig } = await import("../src/config.js");
 const { parseMemoryUnits, readMemoryFile } = await import("../src/memory.js");
@@ -385,6 +391,52 @@ test("when every re-prompt fails the gates, synthesis fails loudly and keeps the
   const saved = config.state.readProposal();
   assert.ok(saved.violations.length, "the rejected proposal is inspectable");
   assert.equal(saved.edits.length, 0);
+});
+
+test("a session-prompt exit during a rejected annotation re-prompt retries that prompt once", async () => {
+  const { run, calls } = setup({
+    edit: { "AGENTS.md": { replace: [[TWO_ITEMS, ""]] } },
+    annotations: [
+      { reply: { edits: [{ ...removal(["H1"]), evidence: [] }] } },
+      { exitCode: 1, stderr: "transient acpx failure" },
+      { reply: { edits: [removal(["H1"])], verdicts: [], notes: [] } },
+    ],
+  });
+
+  const { proposal, violations } = await run();
+  assert.deepEqual(violations, []);
+  assert.equal(proposal.edits.length, 1);
+  const annotationCalls = calls().filter(
+    (call) => call.argv.includes("--file") && call.argv.some((arg) => /synthesis-annotate-/.test(arg)),
+  );
+  assert.equal(annotationCalls.length, 3, "one rejected answer, one failed process, then one successful retry");
+  assert.equal(
+    annotationCalls[1].argv[annotationCalls[1].argv.indexOf("--file") + 1],
+    annotationCalls[2].argv[annotationCalls[2].argv.indexOf("--file") + 1],
+    "the retry reuses the exact rejected annotation prompt",
+  );
+});
+
+test("a failed annotation re-prompt retry is not retried again", async () => {
+  const { run, calls } = setup({
+    edit: { "AGENTS.md": { replace: [[TWO_ITEMS, ""]] } },
+    annotations: [
+      { reply: { edits: [{ ...removal(["H1"]), evidence: [] }] } },
+      { exitCode: 1, stderr: "transient acpx failure" },
+      { exitCode: 1, stderr: "transient acpx failure again" },
+    ],
+  });
+
+  await assert.rejects(run(), (err) => {
+    assert.ok(err instanceof AcpxError);
+    assert.equal(err.sessionPromptFailure, true);
+    assert.match(err.message, /session prompt failed \(exit 1\)/);
+    return true;
+  });
+  const annotationCalls = calls().filter(
+    (call) => call.argv.includes("--file") && call.argv.some((arg) => /synthesis-annotate-/.test(arg)),
+  );
+  assert.equal(annotationCalls.length, 3, "one first answer plus one failed attempt and its single retry");
 });
 
 test("a harness that writes to the repository instead of the staging copy is refused, loudly", async () => {
