@@ -62,12 +62,12 @@ if (!prompt.includes("## Measured changes")) {
 } else {
   const step = script.annotations[Math.min(state.annotate, script.annotations.length - 1)];
   state.annotate += 1;
+  if (step.editFirst) applyEdits(step.editFirst);
   if (step.exitCode) {
     fs.writeFileSync(statePath, JSON.stringify(state));
     if (step.stderr) process.stderr.write(step.stderr + "\\n");
     process.exit(step.exitCode);
   }
-  if (step.editFirst) applyEdits(step.editFirst);
   process.stdout.write(typeof step.reply === "string" ? step.reply : JSON.stringify(step.reply) + "\\n");
   process.stderr.write("[acpx] tokens: input=500 output=30 total=530\\n");
 }
@@ -437,6 +437,52 @@ test("a failed annotation re-prompt retry is not retried again", async () => {
     (call) => call.argv.includes("--file") && call.argv.some((arg) => /synthesis-annotate-/.test(arg)),
   );
   assert.equal(annotationCalls.length, 3, "one first answer plus one failed attempt and its single retry");
+});
+
+test("a session-prompt exit after remeasurement retries the annotation once", async () => {
+  const { run, calls } = setup({
+    edit: { "AGENTS.md": { replace: [[TWO_ITEMS, ""]] } },
+    annotations: [
+      { reply: { edits: [{ ...removal(["H1"]), evidence: [] }] } },
+      {
+        editFirst: {
+          "AGENTS.md": {
+            replace: [["- Keep this file short.", "- Keep this file short; point at files instead of copying them."]],
+          },
+        },
+        reply: { edits: [] },
+      },
+      {
+        editFirst: {
+          "AGENTS.md": {
+            replace: [
+              [
+                "- Skills only count if a harness loads them.",
+                "- Skills count only when the selected harness loads them.",
+              ],
+            ],
+          },
+        },
+        exitCode: 1,
+        stderr: "transient acpx failure after remeasurement",
+      },
+      { reply: { edits: [] } },
+      { reply: { edits: [removal(["H1"]), tighten(["H2"]), tighten(["H3"])], verdicts: [], notes: [] } },
+    ],
+  });
+
+  const { proposal, violations } = await run();
+  assert.deepEqual(violations, []);
+  assert.equal(proposal.edits.length, 3);
+  const annotationCalls = calls().filter(
+    (call) => call.argv.includes("--file") && call.argv.some((arg) => /synthesis-annotate-/.test(arg)),
+  );
+  assert.equal(annotationCalls.length, 5, "a rejected answer, two remeasurements, one failed call, and one retry");
+  assert.equal(
+    annotationCalls[2].argv[annotationCalls[2].argv.indexOf("--file") + 1],
+    annotationCalls[3].argv[annotationCalls[3].argv.indexOf("--file") + 1],
+    "the retry reuses the remeasured annotation prompt",
+  );
 });
 
 test("a harness that writes to the repository instead of the staging copy is refused, loudly", async () => {

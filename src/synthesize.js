@@ -401,12 +401,13 @@ async function annotateLoop({
     try {
       result = await holder.prompt(promptArgs);
     } catch (err) {
-      // A re-prompt follows a judged answer, so a transient acpx process failure must not
-      // spend another annotation attempt or turn a recoverable CLI exit into a lost run.
-      // Retry only this session-prompt failure once, with the same measured changes and
-      // rejection prompt. Any edits made before the failed process exited are checked by
-      // the normal post-prompt measurement before its answer can be accepted.
-      if (!(attempts > 0 && violationsToShow.length && err?.sessionPromptFailure)) throw err;
+      // A re-prompt follows a judged answer or remeasurement, so a transient acpx process
+      // failure must not spend another annotation attempt or turn a recoverable CLI exit
+      // into a lost run. Retry only this session-prompt failure once, with the same
+      // measured changes and rejection prompt. Any edits made before the failed process
+      // exited are checked by the normal post-prompt measurement before its answer can be
+      // accepted.
+      if (!(attempts > 0 && (violationsToShow.length || justRemeasured) && err?.sessionPromptFailure)) throw err;
       warn("acpx failed during an annotation re-prompt; retrying that prompt once");
       result = await holder.prompt(promptArgs);
     }
