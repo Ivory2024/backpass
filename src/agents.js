@@ -512,12 +512,20 @@ export class AgentResolver {
    * Unclassifiable errors (a timeout on real work, garbage output) propagate unchanged.
    */
   async withFallthrough(role, fn) {
+    let oneShotFailure = null;
     for (;;) {
-      const pick = await this.resolve(role);
+      let pick;
+      try {
+        pick = await this.resolve(role);
+      } catch (err) {
+        if (oneShotFailure && err && !err.cause) err.cause = oneShotFailure;
+        throw err;
+      }
       try {
         return await fn(pick);
       } catch (err) {
         const isAcpxError = err instanceof AcpxError;
+        if (isAcpxError && err.oneShotFailure) oneShotFailure = err;
         const verdict = isAcpxError ? classifyAcpxFailure(err) : null;
         if (isAcpxError && pick.pinned) throw pinnedFailureError(role, pick, verdict, err);
         if (!verdict) throw err;

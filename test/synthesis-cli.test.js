@@ -266,6 +266,23 @@ test("a failed one-shot analysis stops the full run before synthesis", () => {
   assert.equal(run.annotateTurns(), 0);
 });
 
+test("an exhausted one-shot auth failure stops the full run cleanly after ladder fallthrough", () => {
+  const dir = makeCliRepo({ memory: MEMORY, activeSessions: true });
+  fs.writeFileSync(
+    path.join(dir, ".backpassrc.json"),
+    JSON.stringify({ ladders: { analysis: [{ model: "fake-model", agents: ["opencode"] }] } }),
+  );
+  const run = runCli(dir, ["run", "--since", "all"], {
+    script: { analysisFail: { stderr: "[acpx] error: RUNTIME AUTH_REQUIRED Authentication required\\n" } },
+  });
+
+  assert.equal(run.status, 0, run.output);
+  assert.match(run.output, /AUTH_REQUIRED/);
+  assert.match(run.output, /skipping synthesis for this run after the prompt failed/);
+  assert.equal(run.editTurns(), 0);
+  assert.equal(run.annotateTurns(), 0);
+});
+
 test("the remeasurement limit stops on the declared third file-moving turn", () => {
   const dir = makeCliRepo({ memory: MEMORY });
   const run = runCli(dir, ["propose", ...PIN], {

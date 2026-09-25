@@ -185,6 +185,7 @@ export function makeCliRepo({ memory, sessions = 3, files = {}, activeSessions =
           message: { role: "assistant", content: `completed task step ${turn + 1}` },
           cwd: dir,
           sessionId,
+          entrypoint: "cli",
           timestamp: `2026-08-01T00:00:0${turn + 1}.000Z`,
         });
       }
