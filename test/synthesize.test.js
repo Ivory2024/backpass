@@ -439,6 +439,37 @@ test("a failed annotation re-prompt retry is not retried again", async () => {
   assert.equal(annotationCalls.length, 3, "one first answer plus one failed attempt and its single retry");
 });
 
+test("a session-prompt exit after first-turn remeasurement retries the new annotation", async () => {
+  const { run, calls } = setup({
+    edit: { "AGENTS.md": { replace: [[TWO_ITEMS, ""]] } },
+    annotations: [
+      {
+        editFirst: {
+          "AGENTS.md": {
+            replace: [["- Keep this file short.", "- Keep this file short; point at files instead of copying them."]],
+          },
+        },
+        reply: { edits: [] },
+      },
+      { exitCode: 1, stderr: "transient acpx failure after first-turn remeasurement" },
+      { reply: { edits: [removal(["H1"]), tighten(["H2"])], verdicts: [], notes: [] } },
+    ],
+  });
+
+  const { proposal, violations } = await run();
+  assert.deepEqual(violations, []);
+  assert.equal(proposal.edits.length, 2);
+  const annotationCalls = calls().filter(
+    (call) => call.argv.includes("--file") && call.argv.some((arg) => /synthesis-annotate-/.test(arg)),
+  );
+  assert.equal(annotationCalls.length, 3, "the first answer remeasures, then one failed prompt and its retry");
+  assert.equal(
+    annotationCalls[1].argv[annotationCalls[1].argv.indexOf("--file") + 1],
+    annotationCalls[2].argv[annotationCalls[2].argv.indexOf("--file") + 1],
+    "the retry reuses the first remeasured annotation prompt",
+  );
+});
+
 test("a session-prompt exit after remeasurement retries the annotation once", async () => {
   const { run, calls } = setup({
     edit: { "AGENTS.md": { replace: [[TWO_ITEMS, ""]] } },

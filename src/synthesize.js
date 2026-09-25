@@ -407,7 +407,7 @@ async function annotateLoop({
       // measured changes and rejection prompt. Any edits made before the failed process
       // exited are checked by the normal post-prompt measurement before its answer can be
       // accepted.
-      if (!(attempts > 0 && (violationsToShow.length || justRemeasured) && err?.sessionPromptFailure)) throw err;
+      if (!(((attempts > 0 && violationsToShow.length) || justRemeasured) && err?.sessionPromptFailure)) throw err;
       warn("acpx failed during an annotation re-prompt; retrying that prompt once");
       result = await holder.prompt(promptArgs);
     }
