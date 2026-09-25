@@ -7,7 +7,7 @@ import { budgetBar, formatTokens } from "../tokens.js";
 import { skillDescriptionTokens } from "../skills.js";
 import { startTui } from "../tui/index.js";
 import { resolveMemoryFiles } from "../memory.js";
-import { AcpxError } from "../acpx.js";
+import { oneShotFailureOf } from "../acpx.js";
 
 /**
  * The default command: one full backward pass.
@@ -55,7 +55,7 @@ export async function cmdRun(ctx) {
       return 0;
     }
 
-    const analysis = await runAnalysis(ctx);
+    const analysis = await runAnalysis(ctx, { abortOnPromptFailure: true });
 
     if (!analysis.transcripts.length) {
       tui?.stop();
@@ -95,7 +95,7 @@ export async function cmdRun(ctx) {
       );
     }
 
-    const { proposal } = await runProposal(ctx, analysis);
+    const { proposal } = await runProposal(ctx, analysis, { abortOnPromptFailure: true });
     tui?.stop();
 
     if (ctx.flags.json) {
@@ -107,9 +107,10 @@ export async function cmdRun(ctx) {
     return 0;
   } catch (err) {
     tui?.stop();
-    if (err instanceof AcpxError && (err.skipRun || err.oneShotFailure)) {
+    const oneShotFailure = oneShotFailureOf(err);
+    if (err?.skipRun || oneShotFailure) {
       config.state.clearProposal();
-      info(err.message);
+      info((oneShotFailure || err).message);
       info("skipping synthesis for this run after the prompt failed");
       return 0;
     }

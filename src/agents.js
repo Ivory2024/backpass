@@ -517,7 +517,6 @@ export class AgentResolver {
       try {
         return await fn(pick);
       } catch (err) {
-        if (err instanceof AcpxError && err.oneShotFailure) throw err;
         const isAcpxError = err instanceof AcpxError;
         const verdict = isAcpxError ? classifyAcpxFailure(err) : null;
         if (isAcpxError && pick.pinned) throw pinnedFailureError(role, pick, verdict, err);
@@ -566,7 +565,9 @@ function pinnedFailureError(role, pick, verdict, err) {
     hint = pin;
   }
   const detail = err?.message ? ` (${String(err.message).split("\n")[0]})` : "";
-  return new UserError(`pinned ${role} agent ${pick.agent}${model} ${label}${detail}`, hint);
+  const failure = new UserError(`pinned ${role} agent ${pick.agent}${model} ${label}${detail}`, hint);
+  if (err instanceof AcpxError && err.oneShotFailure) failure.cause = err;
+  return failure;
 }
 
 function exhaustedError(role, trail) {

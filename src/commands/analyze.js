@@ -70,16 +70,16 @@ export function primaryMemoryFile(repo, config, scope = null) {
   };
 }
 
-export async function runAnalysis(ctx) {
+export async function runAnalysis(ctx, { abortOnPromptFailure = false } = {}) {
   try {
-    return await runAnalysisCore(ctx);
+    return await runAnalysisCore(ctx, { abortOnPromptFailure });
   } finally {
     await closeRemoteDiscovery(ctx);
     pruneHostCache(ctx.config.state.root);
   }
 }
 
-async function runAnalysisCore(ctx) {
+async function runAnalysisCore(ctx, { abortOnPromptFailure }) {
   const { repo, scope, config } = ctx;
   const { file, hash, skills } = primaryMemoryFile(repo, config, scope);
   // Deterministic by design: tokens and units come from parsing the file, no model.
@@ -108,6 +108,7 @@ async function runAnalysisCore(ctx) {
     modelCwd: scope?.modelCwd || repo.root,
     memoryHash: hash,
     force: Boolean(ctx.flags.force),
+    abortOnPromptFailure,
     prefetch: (pending) => prefetchRemoteTranscripts(pending, { config }),
   });
 

@@ -29,7 +29,14 @@ import { pruneHostCache } from "../discovery/cache.js";
  * sampled corpus or score positional instruction aliases against an index they never saw.
  * Legacy records stay excluded until ordinary discovery and analysis backfill them.
  */
-export async function foldForRun(ctx, memoryFile, memoryHash, skills = [], transcripts = []) {
+export async function foldForRun(
+  ctx,
+  memoryFile,
+  memoryHash,
+  skills = [],
+  transcripts = [],
+  { abortOnPromptFailure = false } = {},
+) {
   const { state, minGapEvidence, gapLedgerMaxAge } = ctx.config;
   const selectedByIdentity = new Map(transcripts.map((transcript) => [transcriptIdentity(transcript), transcript]));
   const selected = new Set(selectedByIdentity.keys());
@@ -73,6 +80,7 @@ export async function foldForRun(ctx, memoryFile, memoryHash, skills = [], trans
     config: ctx.config,
     repo: ctx.repo,
     modelCwd: ctx.scope?.modelCwd || ctx.repo?.root,
+    abortOnPromptFailure,
   });
   pruneGapLedger(ledger, { memoryFile, memoryPath: memoryFile.path, skills, maxAge: gapLedgerMaxAge });
   state.writeGapLedger(ledger);
@@ -98,16 +106,16 @@ export function accountForConsolidationUsage(proposal, summary) {
   }
 }
 
-export async function runProposal(ctx, precomputed = null) {
+export async function runProposal(ctx, precomputed = null, { abortOnPromptFailure = false } = {}) {
   try {
-    return await runProposalCore(ctx, precomputed);
+    return await runProposalCore(ctx, precomputed, { abortOnPromptFailure });
   } finally {
     await closeRemoteDiscovery(ctx);
     pruneHostCache(ctx.config.state.root);
   }
 }
 
-async function runProposalCore(ctx, precomputed) {
+async function runProposalCore(ctx, precomputed, { abortOnPromptFailure }) {
   const { repo, config } = ctx;
   // Starting a new proposal run invalidates the previous result immediately. Discovery,
   // folding, and agent resolution can all fail before synthesis starts; none of those
@@ -117,7 +125,7 @@ async function runProposalCore(ctx, precomputed) {
   const transcripts = precomputed?.transcripts || capTranscripts(await discoverForRun(ctx), config).transcripts;
 
   const foldStarted = Date.now();
-  const summary = await foldForRun(ctx, file, hash, skills ?? [], transcripts);
+  const summary = await foldForRun(ctx, file, hash, skills ?? [], transcripts, { abortOnPromptFailure });
   config.state.writeSummary(summary);
   emitProgress("fold:done", {
     instructions: summary.instructions.length,

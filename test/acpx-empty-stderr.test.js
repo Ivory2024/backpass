@@ -21,6 +21,7 @@ fs.writeFileSync(
 const argv = process.argv.slice(2);
 if (argv.includes("sessions") && argv.includes("new")) process.exit(0);
 if (argv.includes("sessions") && argv.includes("close")) process.exit(0);
+if (process.env.BACKPASS_TEST_LONG_STDERR) process.stderr.write("x".repeat(2500) + "diagnostic-end");
 process.exit(1);
 `,
 );
@@ -59,5 +60,21 @@ test("session prompt names the exit code when opencode exits with no stderr", as
     );
   } finally {
     await session.close();
+  }
+});
+
+test("one-shot failure preserves the complete adapter diagnostic", async () => {
+  process.env.BACKPASS_TEST_LONG_STDERR = "1";
+  try {
+    await assert.rejects(
+      () => execOneShot({ agent: "opencode", promptFile, cwd: fixtureDir, timeoutSeconds: 5 }),
+      (err) => {
+        assert.ok(err instanceof AcpxError, String(err));
+        assert.ok(err.message.endsWith("x".repeat(2500) + "diagnostic-end"));
+        return true;
+      },
+    );
+  } finally {
+    delete process.env.BACKPASS_TEST_LONG_STDERR;
   }
 });

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { AcpxError, extractJson, runModelCall, usageRecord } from "./acpx.js";
+import { extractJson, oneShotFailureOf, runModelCall, usageRecord } from "./acpx.js";
 import { mergeGapEntries } from "./gap-ledger.js";
 import { renderPrompt } from "./prompts.js";
 import { warn } from "./logger.js";
@@ -63,7 +63,14 @@ function firstMistake(entry) {
  * Returns `{ merged, usage }`, `{ skipped }`, or `{ failed }` - never throws for a
  * model-side failure, because a run without consolidation is still a valid run.
  */
-export async function consolidateGapLedger({ ledger, memoryPath, config, repo, modelCwd = null }) {
+export async function consolidateGapLedger({
+  ledger,
+  memoryPath,
+  config,
+  repo,
+  modelCwd = null,
+  abortOnPromptFailure = false,
+}) {
   const entries = Object.values(ledger.entries).filter((e) => e.memoryPath === memoryPath);
   if (entries.length < MIN_ENTRIES) return { skipped: "fewer than two open gaps" };
   if (!config.agents) return { skipped: "no agent resolver" };
@@ -91,7 +98,7 @@ export async function consolidateGapLedger({ ledger, memoryPath, config, repo, m
       });
     });
   } catch (err) {
-    if (err instanceof AcpxError && err.oneShotFailure) throw err;
+    if (abortOnPromptFailure && oneShotFailureOf(err)) throw err;
     warn(`gap consolidation failed (${err.message}); continuing with lexical gap identity for this run`);
     return { failed: err.message };
   }

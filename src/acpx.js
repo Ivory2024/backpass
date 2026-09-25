@@ -394,22 +394,20 @@ export async function acpxVersion({ timeoutMs = 10_000 } = {}) {
   return line || null;
 }
 
-const MAX_STDERR_LINES = 20;
-const MAX_STDERR_CHARS = 2_000;
-
 export function formatAcpxErrorDetail(result) {
   let detail = (result?.stderr || "").trim();
   if (!detail) {
     const stdout = (result?.stdout || "").trim();
     if (stdout && !stdout.startsWith("{")) detail = stdout;
   }
-  if (detail) {
-    const lines = detail.split("\n");
-    if (lines.length > MAX_STDERR_LINES) detail = lines.slice(0, MAX_STDERR_LINES).join("\n") + "\n...";
-    if (detail.length > MAX_STDERR_CHARS) detail = detail.slice(0, MAX_STDERR_CHARS) + "...";
-    return detail;
-  }
+  if (detail) return detail;
   return result?.code !== undefined && result?.code !== null ? "exit " + result.code : "unknown error";
+}
+
+export function oneShotFailureOf(error) {
+  if (error instanceof AcpxError && error.oneShotFailure) return error;
+  if (error?.cause instanceof AcpxError && error.cause.oneShotFailure) return error.cause;
+  return null;
 }
 
 /**

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { AcpxError, extractJson, runModelCall, usageRecord } from "./acpx.js";
+import { extractJson, oneShotFailureOf, runModelCall, usageRecord } from "./acpx.js";
 import { distill } from "./distill.js";
 import { classifyInteraction } from "./interaction.js";
 import { readTranscript } from "./discovery/index.js";
@@ -257,6 +257,7 @@ export async function analyzeTranscripts({
   memoryHash,
   force = false,
   prefetch = null,
+  abortOnPromptFailure = false,
 }) {
   const state = config.state;
   const pending = [];
@@ -405,7 +406,7 @@ export async function analyzeTranscripts({
       }
     } catch (err) {
       if (err instanceof UserError) throw err;
-      if (err instanceof AcpxError && err.oneShotFailure) throw err;
+      if (abortOnPromptFailure && oneShotFailureOf(err)) throw err;
       // Per-transcript fail-soft: recorded, listed by `backpass status`, retried next run.
       summary.failed += 1;
       warn(`${transcript.harness} ${transcriptLabel(transcript)}: ${err.message}`);
