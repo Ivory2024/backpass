@@ -7,6 +7,7 @@ import { budgetBar, formatTokens } from "../tokens.js";
 import { skillDescriptionTokens } from "../skills.js";
 import { startTui } from "../tui/index.js";
 import { resolveMemoryFiles } from "../memory.js";
+import { AcpxError } from "../acpx.js";
 
 /**
  * The default command: one full backward pass.
@@ -106,6 +107,12 @@ export async function cmdRun(ctx) {
     return 0;
   } catch (err) {
     tui?.stop();
+    if (err instanceof AcpxError && (err.skipRun || err.oneShotFailure)) {
+      config.state.clearProposal();
+      info(err.message);
+      info("skipping synthesis for this run after the prompt failed");
+      return 0;
+    }
     if (err instanceof ProposalViolation) {
       printSynthesisFailure(err, config.state);
       throw new UserError(err.message, synthesisFailureHint(err));

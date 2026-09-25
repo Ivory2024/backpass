@@ -391,12 +391,18 @@ async function annotateLoop({
     fs.writeFileSync(promptFile, prompt);
     progress("annotate", { attempt: attempts + 1, turn, changes: measured.changes.length });
 
-    const result = await holder.prompt({
-      promptFile,
-      approveAll: true,
-      timeoutSeconds,
-      promptRetries,
-    });
+    let result;
+    try {
+      result = await holder.prompt({
+        promptFile,
+        approveAll: true,
+        timeoutSeconds,
+        promptRetries,
+      });
+    } catch (err) {
+      if (err?.sessionPromptFailure) err.skipRun = true;
+      throw err;
+    }
     usage.push(usageRecord(holder.ranWith, result));
     for (const note of result.notes || []) noteOnce(note);
 

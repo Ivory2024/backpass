@@ -230,6 +230,42 @@ test("a failed annotate re-prompt includes the adapter stderr that explains the 
   assert.match(run.output, /\[acpx\] error: quota exhausted\n\[acpx\] details: retry later/);
 });
 
+test("a failed annotate re-prompt stops the full run cleanly before reporting synthesis", () => {
+  const dir = makeCliRepo({ memory: MEMORY, activeSessions: true });
+  const run = runCli(
+    dir,
+    ["run", "--analysis-agent", "claude", "--analysis-model", "fake-model", "--since", "all", ...PIN],
+    {
+      script: {
+        edit: EDIT_TURN,
+        annotations: [
+          { reply: { edits: [extract(["H1", "H2", "H3"], "extract two playbooks", { evidence: [] })] } },
+          { fail: true, exitCode: 1, stderr: "[acpx] error: temporary adapter failure\n[acpx] details: retry later\n" },
+        ],
+      },
+    },
+  );
+
+  assert.equal(run.status, 0, run.output);
+  assert.match(run.output, /temporary adapter failure/);
+  assert.match(run.output, /skipping synthesis for this run after the prompt failed/);
+  assert.equal(run.annotateTurns(), 2);
+  assert.equal(fs.existsSync(path.join(dir, ".backpass", "proposal.json")), false);
+});
+
+test("a failed one-shot analysis stops the full run before synthesis", () => {
+  const dir = makeCliRepo({ memory: MEMORY, activeSessions: true });
+  const run = runCli(dir, ["run", "--analysis-agent", "opencode", "--analysis-model", "fake-model", "--since", "all"], {
+    script: { analysisFail: { stderr: "[acpx] error: temporary one-shot failure\\n" } },
+  });
+
+  assert.equal(run.status, 0, run.output);
+  assert.match(run.output, /temporary one-shot failure/);
+  assert.match(run.output, /skipping synthesis for this run after the prompt failed/);
+  assert.equal(run.editTurns(), 0);
+  assert.equal(run.annotateTurns(), 0);
+});
+
 test("the remeasurement limit stops on the declared third file-moving turn", () => {
   const dir = makeCliRepo({ memory: MEMORY });
   const run = runCli(dir, ["propose", ...PIN], {

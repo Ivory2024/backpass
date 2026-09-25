@@ -517,6 +517,7 @@ export class AgentResolver {
       try {
         return await fn(pick);
       } catch (err) {
+        if (err instanceof AcpxError && err.oneShotFailure) throw err;
         const isAcpxError = err instanceof AcpxError;
         const verdict = isAcpxError ? classifyAcpxFailure(err) : null;
         if (isAcpxError && pick.pinned) throw pinnedFailureError(role, pick, verdict, err);

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { extractJson, runModelCall, usageRecord } from "./acpx.js";
+import { AcpxError, extractJson, runModelCall, usageRecord } from "./acpx.js";
 import { mergeGapEntries } from "./gap-ledger.js";
 import { renderPrompt } from "./prompts.js";
 import { warn } from "./logger.js";
@@ -91,6 +91,7 @@ export async function consolidateGapLedger({ ledger, memoryPath, config, repo, m
       });
     });
   } catch (err) {
+    if (err instanceof AcpxError && err.oneShotFailure) throw err;
     warn(`gap consolidation failed (${err.message}); continuing with lexical gap identity for this run`);
     return { failed: err.message };
   }

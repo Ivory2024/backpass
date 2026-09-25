@@ -39,6 +39,9 @@ const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-fake-cli-"));
  * answering the same way" needs no padding.
  */
 const FAKE_ACPX = path.join(fakeDir, "acpx");
+const FAKE_OPENCODE = path.join(fakeDir, "opencode");
+fs.writeFileSync(FAKE_OPENCODE, `#!${process.execPath}\nprocess.stdout.write("fake-model\\n");\n`);
+fs.chmodSync(FAKE_OPENCODE, 0o755);
 fs.writeFileSync(
   FAKE_ACPX,
   `#!${process.execPath}
@@ -82,6 +85,11 @@ if (argv.includes("config") && argv.includes("show")) {
   log();
   process.exit(0);
 }
+if (argv.includes("status")) {
+  process.stdout.write(JSON.stringify({ availableModels: ["fake-model"] }) + "\\n");
+  log();
+  process.exit(0);
+}
 if (argv.includes("sessions") || argv.includes("set")) {
   if (argv.includes("new")) process.stdout.write("fake-session-id\\n");
   log();
@@ -91,10 +99,17 @@ if (!promptFile) { log(); process.exit(2); }
 
 const prompt = fs.readFileSync(promptFile, "utf8");
 entry.prompt = prompt;
-entry.turn = prompt.includes("## Measured changes") ? "annotate" : "edit";
+entry.turn = prompt.includes("## The distilled session trace") ? "analysis" : prompt.includes("## Measured changes") ? "annotate" : "edit";
 log();
 
-if (entry.turn === "edit") {
+if (entry.turn === "analysis") {
+  if (script.analysisFail) {
+    process.stderr.write(script.analysisFail.stderr || "synthetic analysis failure\\n");
+    process.exit(script.analysisFail.exitCode || 1);
+  }
+  process.stdout.write(JSON.stringify({ positive: [], negative: [], gaps: [], usedRawTranscript: false }) + "\\n");
+  process.stderr.write("[acpx] tokens: input=500 output=20 total=520\\n");
+} else if (entry.turn === "edit") {
   state.edit += 1;
   if (!argv.includes("--approve-all")) {
     process.stdout.write("I could not edit the file: write permission was denied.\\n");
@@ -129,7 +144,7 @@ function git(args, cwd) {
  * A repo `backpass propose` will run in: a git checkout with the memory file committed,
  * and tier-1 evidence already recorded, so the run starts at the fold.
  */
-export function makeCliRepo({ memory, sessions = 3, files = {} }) {
+export function makeCliRepo({ memory, sessions = 3, files = {}, activeSessions = false }) {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "backpass-cli-")));
   fs.writeFileSync(path.join(dir, "AGENTS.md"), memory);
   for (const [name, text] of Object.entries(files)) {
@@ -153,17 +168,28 @@ export function makeCliRepo({ memory, sessions = 3, files = {} }) {
   for (let i = 1; i <= sessions; i += 1) {
     const sessionId = `s${i}-${path.basename(dir)}`;
     const sessionPath = path.join(projectDir, `${sessionId}.jsonl`);
-    fs.writeFileSync(
-      sessionPath,
-      `${JSON.stringify({
+    const events = [
+      {
         type: "user",
         message: { role: "user", content: `session ${i} task` },
         cwd: dir,
         sessionId,
         entrypoint: "cli",
         timestamp: "2026-08-01T00:00:00.000Z",
-      })}\n`,
-    );
+      },
+    ];
+    if (activeSessions) {
+      for (let turn = 0; turn < 4; turn += 1) {
+        events.push({
+          type: "assistant",
+          message: { role: "assistant", content: `completed task step ${turn + 1}` },
+          cwd: dir,
+          sessionId,
+          timestamp: `2026-08-01T00:00:0${turn + 1}.000Z`,
+        });
+      }
+    }
+    fs.writeFileSync(sessionPath, `${events.map((event) => JSON.stringify(event)).join("\n")}\n`);
     const stat = fs.statSync(sessionPath);
     const transcript = {
       harness: "claude",
@@ -231,6 +257,7 @@ export function runCli(dir, args, { script = null, env = {} } = {}) {
       USERPROFILE: emptyHome,
       NO_COLOR: "1",
       CI: "1",
+      PATH: `${fakeDir}${path.delimiter}${process.env.PATH}`,
       BACKPASS_ACPX_BIN: FAKE_ACPX,
       FAKE_ACPX_SCRIPT: scriptPath,
       FAKE_ACPX_STATE: statePath,

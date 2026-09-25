@@ -61,6 +61,8 @@ export class AcpxError extends Error {
     this.unsupported = false;
     /** Set when the call exited clean but produced no usable text - see `assertNonEmptyOutput`. */
     this.emptyOutput = emptyOutput;
+    this.oneShotFailure = false;
+    this.sessionPromptFailure = false;
   }
 }
 
@@ -511,7 +513,12 @@ export async function execOneShot({
       throw new AcpxError(`acpx ${agent} exec timed out after ${timeoutSeconds}s`, result);
     }
     if (result.code !== 0) {
-      throw new AcpxError(`acpx ${agent} exec failed (exit ${result.code}): ${formatAcpxErrorDetail(result)}`, result);
+      const err = new AcpxError(
+        `acpx ${agent} exec failed (exit ${result.code}): ${formatAcpxErrorDetail(result)}`,
+        result,
+      );
+      err.oneShotFailure = true;
+      throw err;
     }
     assertNotAcpxBudgetKill({
       agent,
@@ -692,10 +699,12 @@ export async function openSession({
     const result = await run(args, { timeoutMs: (timeoutSeconds + 30) * 1000, cwd, env: invocation.env });
     if (result.timedOut) throw new AcpxError(`acpx ${agent} session prompt timed out after ${timeoutSeconds}s`, result);
     if (result.code !== 0) {
-      throw new AcpxError(
+      const err = new AcpxError(
         `acpx ${agent} session prompt failed (exit ${result.code}): ${formatAcpxErrorDetail(result)}`,
         result,
       );
+      err.sessionPromptFailure = true;
+      throw err;
     }
 
     const combined = `${result.stdout}\n${result.stderr}`;

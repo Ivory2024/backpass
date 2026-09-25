@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { extractJson, runModelCall, usageRecord } from "./acpx.js";
+import { AcpxError, extractJson, runModelCall, usageRecord } from "./acpx.js";
 import { distill } from "./distill.js";
 import { classifyInteraction } from "./interaction.js";
 import { readTranscript } from "./discovery/index.js";
@@ -405,6 +405,7 @@ export async function analyzeTranscripts({
       }
     } catch (err) {
       if (err instanceof UserError) throw err;
+      if (err instanceof AcpxError && err.oneShotFailure) throw err;
       // Per-transcript fail-soft: recorded, listed by `backpass status`, retried next run.
       summary.failed += 1;
       warn(`${transcript.harness} ${transcriptLabel(transcript)}: ${err.message}`);
