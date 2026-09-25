@@ -107,6 +107,10 @@ if (entry.turn === "edit") {
   const step = script.annotations[Math.min(state.annotate, script.annotations.length - 1)];
   state.annotate += 1;
   if (step.editFirst) applyEdits(step.editFirst);
+  if (step.fail) {
+    process.stderr.write(step.stderr || "synthetic prompt failure\\n");
+    process.exit(step.exitCode || 1);
+  }
   if (!step.empty) {
     process.stdout.write(typeof step.reply === "string" ? step.reply : JSON.stringify(step.reply) + "\\n");
   }

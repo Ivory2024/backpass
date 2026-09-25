@@ -392,6 +392,24 @@ export async function acpxVersion({ timeoutMs = 10_000 } = {}) {
   return line || null;
 }
 
+const MAX_STDERR_LINES = 20;
+const MAX_STDERR_CHARS = 2_000;
+
+export function formatAcpxErrorDetail(result) {
+  let detail = (result?.stderr || "").trim();
+  if (!detail) {
+    const stdout = (result?.stdout || "").trim();
+    if (stdout && !stdout.startsWith("{")) detail = stdout;
+  }
+  if (detail) {
+    const lines = detail.split("\n");
+    if (lines.length > MAX_STDERR_LINES) detail = lines.slice(0, MAX_STDERR_LINES).join("\n") + "\n...";
+    if (detail.length > MAX_STDERR_CHARS) detail = detail.slice(0, MAX_STDERR_CHARS) + "...";
+    return detail;
+  }
+  return result?.code !== undefined && result?.code !== null ? "exit " + result.code : "unknown error";
+}
+
 /**
  * Zero-token availability probe: spawn the adapter, handshake, create a session,
  * read what it advertises, close it. For codex / pi / grok, `sessions new` is a
@@ -425,7 +443,7 @@ export async function probeSession({
     const classified = classifyAcpxFailure(created);
     return {
       verdict: classified || "unreachable",
-      detail: firstLine(created.stderr) || `exit ${created.code}`,
+      detail: firstLine(formatAcpxErrorDetail(created)),
       availableModels: [],
       ...(!classified ? { transient: true } : {}),
     };
@@ -493,10 +511,7 @@ export async function execOneShot({
       throw new AcpxError(`acpx ${agent} exec timed out after ${timeoutSeconds}s`, result);
     }
     if (result.code !== 0) {
-      throw new AcpxError(
-        `acpx ${agent} exec failed (exit ${result.code}): ${firstLine(result.stderr) || `exit ${result.code}`}`,
-        result,
-      );
+      throw new AcpxError(`acpx ${agent} exec failed (exit ${result.code}): ${formatAcpxErrorDetail(result)}`, result);
     }
     assertNotAcpxBudgetKill({
       agent,
@@ -590,12 +605,9 @@ export async function openSession({
     invocation.dispose();
     // An auth or spawn failure must surface as such so the caller can fall through.
     if (classifyAcpxFailure(created)) {
-      throw new AcpxError(`acpx ${agent} session create failed: ${firstLine(created.stderr)}`, created);
+      throw new AcpxError(`acpx ${agent} session create failed: ${formatAcpxErrorDetail(created)}`, created);
     }
-    const err = new AcpxError(
-      `acpx ${agent} has no session support: ${firstLine(created.stderr) || `exit ${created.code}`}`,
-      created,
-    );
+    const err = new AcpxError(`acpx ${agent} has no session support: ${formatAcpxErrorDetail(created)}`, created);
     err.unsupported = true;
     throw err;
   }
@@ -681,7 +693,7 @@ export async function openSession({
     if (result.timedOut) throw new AcpxError(`acpx ${agent} session prompt timed out after ${timeoutSeconds}s`, result);
     if (result.code !== 0) {
       throw new AcpxError(
-        `acpx ${agent} session prompt failed (exit ${result.code}): ${firstLine(result.stderr) || `exit ${result.code}`}`,
+        `acpx ${agent} session prompt failed (exit ${result.code}): ${formatAcpxErrorDetail(result)}`,
         result,
       );
     }

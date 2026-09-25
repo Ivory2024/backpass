@@ -213,6 +213,23 @@ test("a remeasurement is not a failed annotation: it costs no attempt, and the n
   assert.ok(prompts[3].includes("is not part of any edit"));
 });
 
+test("a failed annotate re-prompt includes the adapter stderr that explains the cron failure", () => {
+  const dir = makeCliRepo({ memory: MEMORY });
+  const run = runCli(dir, ["propose", ...PIN], {
+    script: {
+      edit: EDIT_TURN,
+      annotations: [
+        { reply: { edits: [extract(["H1", "H2", "H3"], "extract two playbooks", { evidence: [] })] } },
+        { fail: true, exitCode: 1, stderr: "[acpx] error: quota exhausted\n[acpx] details: retry later\n" },
+      ],
+    },
+  });
+
+  assert.equal(run.status, 1);
+  assert.match(run.output, /acpx claude session prompt failed \(exit 1\)/);
+  assert.match(run.output, /\[acpx\] error: quota exhausted\n\[acpx\] details: retry later/);
+});
+
 test("the remeasurement limit stops on the declared third file-moving turn", () => {
   const dir = makeCliRepo({ memory: MEMORY });
   const run = runCli(dir, ["propose", ...PIN], {
