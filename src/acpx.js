@@ -48,7 +48,15 @@ export function effortOptionKey(agent) {
 export class AcpxError extends Error {
   constructor(
     message,
-    { stdout = "", stderr = "", code = null, timedOut = false, spawnError = null, emptyOutput = false } = {},
+    {
+      stdout = "",
+      stderr = "",
+      code = null,
+      timedOut = false,
+      spawnError = null,
+      emptyOutput = false,
+      sessionPromptFailure = false,
+    } = {},
   ) {
     super(message);
     this.name = "AcpxError";
@@ -61,6 +69,8 @@ export class AcpxError extends Error {
     this.unsupported = false;
     /** Set when the call exited clean but produced no usable text - see `assertNonEmptyOutput`. */
     this.emptyOutput = emptyOutput;
+    /** Set only when an acpx session prompt fails to execute successfully. */
+    this.sessionPromptFailure = sessionPromptFailure;
   }
 }
 
@@ -678,11 +688,16 @@ export async function openSession({
       promptFile,
     ];
     const result = await run(args, { timeoutMs: (timeoutSeconds + 30) * 1000, cwd, env: invocation.env });
-    if (result.timedOut) throw new AcpxError(`acpx ${agent} session prompt timed out after ${timeoutSeconds}s`, result);
+    if (result.timedOut) {
+      throw new AcpxError(`acpx ${agent} session prompt timed out after ${timeoutSeconds}s`, {
+        ...result,
+        sessionPromptFailure: true,
+      });
+    }
     if (result.code !== 0) {
       throw new AcpxError(
         `acpx ${agent} session prompt failed (exit ${result.code}): ${firstLine(result.stderr) || `exit ${result.code}`}`,
-        result,
+        { ...result, sessionPromptFailure: true },
       );
     }
 
