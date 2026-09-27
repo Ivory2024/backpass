@@ -88,7 +88,7 @@ export class State {
 
   writeJsonFile(file, value) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.tmp`;
+    const tmp = `${file}.tmp.${process.pid}.${crypto.randomBytes(4).toString("hex")}`;
     fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
     fs.renameSync(tmp, file);
   }
