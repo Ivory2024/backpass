@@ -5,7 +5,7 @@ import { defineConfig } from "eslint/config";
 import globals from "globals";
 
 export default defineConfig(js.configs.recommended, eslintConfigPrettier, {
-  files: ["**/*.js"],
+  files: ["**/*.js", "**/*.mjs"],
   ignores: ["node_modules/", ".backpass/"],
   languageOptions: {
     ecmaVersion: "latest",
